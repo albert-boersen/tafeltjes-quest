@@ -19,8 +19,22 @@ export default function GameCanvas() {
       // Make all Text objects render at native screen density before boot
       (Phaser.GameObjects.Text as any).DEFAULT_RESOLUTION = window.devicePixelRatio || 2;
 
+      // Canvas mode throws if arc() is called with a negative radius, which Phaser can
+      // produce when fillRoundedRect/strokeRoundedRect receives a zero/negative dimension
+      // (e.g. a progress bar at 0%, a timer bar at exactly 0s). Patch both methods to
+      // skip the draw silently in those cases.
+      const gp = Phaser.GameObjects.Graphics.prototype as any;
+      (['fillRoundedRect', 'strokeRoundedRect'] as const).forEach(name => {
+        const orig = gp[name];
+        gp[name] = function(x: number, y: number, w: number, h: number, r?: number | object) {
+          if (w <= 0 || h <= 0) return this;
+          if (typeof r === 'number') r = Math.min(r, w / 2, h / 2);
+          return orig.call(this, x, y, w, h, r);
+        };
+      });
+
       new Phaser.Game({
-        type: Phaser.AUTO,
+        type: Phaser.CANVAS,
         backgroundColor: '#1a0a2e',
         antialias: true,
         roundPixels: true,

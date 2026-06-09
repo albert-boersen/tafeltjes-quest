@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Cinzel, Cinzel_Decorative } from 'next/font/google';
 import './globals.css';
 
@@ -18,6 +18,13 @@ const cinzelDecorative = Cinzel_Decorative({
   display: 'swap',
   variable: '--font-cinzel-decorative',
 });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   title: 'Tafeltjes Quest',

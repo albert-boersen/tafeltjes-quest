@@ -46,6 +46,14 @@ export class BattleScene extends Phaser.Scene {
   private locked = false;
   private choiceContainer?: Phaser.GameObjects.Container;
   private readonly hudDepth = 10;
+  // Mobile
+  private useTouchNumpad = false;
+  private hudOffset = 200;
+  private hpBarY = 0;
+  private hpBarW = 0;
+  private timerBarY = 0;
+  private timerBarCenterX = 0;
+  private timerBarW = 180;
 
   constructor() { super('BattleScene'); }
 
@@ -67,7 +75,12 @@ export class BattleScene extends Phaser.Scene {
     const H = this.scale.height;
 
     this.charScale = Math.max(0.55, Math.min(1.4, H / 576));
-    const hudTop = H - 200;
+    const isSch = this.data2.difficulty === 'schildknaap';
+    this.useTouchNumpad = !isSch && this.sys.game.device.input.touch;
+    this.hudOffset = this.useTouchNumpad
+      ? Math.max(Math.min(Math.round(H * 0.40), 310), 200)
+      : 200;
+    const hudTop = H - this.hudOffset;
 
     this.world = worldForTable(this.data2.table);
 
@@ -97,22 +110,27 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private computeEnemyPos(W: number, H: number) {
-    const hudTop = H - 200;
+    const hudTop = H - this.hudOffset;
     this.enemyBaseX = W - Math.round(this.world.enemyRight * this.charScale) - 35;
     this.enemyBaseY = hudTop - Math.round(this.world.enemyFoot * this.charScale);
   }
 
   private createHUD(W: number, H: number) {
-    // Layout (top-to-bottom inside panel):
-    //  +0  HP labels
-    //  +22 HP bars          (18px tall)
-    //  +48 Timer bar        (12px) + time label
-    //  +72 Combo display
-    //  +94 Question text    (~36px font)
-    // +138 Input box        (44px tall)  → total ≈ 182px
+    if (this.useTouchNumpad) {
+      this.createHUDMobile(W, H);
+    } else {
+      this.createHUDDesktop(W, H);
+    }
+  }
+
+  private createHUDDesktop(W: number, H: number) {
     const panelH = 185;
     const panelY = H - panelH - 10;
-    const hpBarW = Math.min(220, Math.max(80, W / 2 - 200));
+    this.hpBarW = Math.min(220, Math.max(80, W / 2 - 200));
+    this.hpBarY = panelY + 22;
+    this.timerBarY = panelY + 48;
+    this.timerBarCenterX = W / 2;
+    this.timerBarW = 180;
     const isSchildknaap = this.data2.difficulty === 'schildknaap';
 
     const panel = this.add.graphics().setDepth(this.hudDepth);
@@ -121,35 +139,19 @@ export class BattleScene extends Phaser.Scene {
     panel.lineStyle(2, 0x4a2890, 1);
     panel.strokeRoundedRect(10, panelY - 8, W - 20, panelH + 18, 14);
 
-    // Row 0: HP labels
-    this.add.text(20, panelY + 2, 'Ridder', {
-      fontFamily: 'Cinzel, serif', fontSize: '14px', color: '#88aaff', fontStyle: 'bold',
-    }).setDepth(this.hudDepth);
-    this.add.text(W / 2, panelY + 2, `Tafel van ${this.data2.table}`, {
-      fontFamily: 'Cinzel, serif', fontSize: '15px', color: '#f5c842', fontStyle: 'bold',
-    }).setOrigin(0.5, 0).setDepth(this.hudDepth);
-    this.add.text(W - hpBarW - 20, panelY + 2, this.world.label, {
-      fontFamily: 'Cinzel, serif', fontSize: '14px', color: '#ff8888', fontStyle: 'bold',
-    }).setDepth(this.hudDepth);
+    this.add.text(20, panelY + 2, 'Ridder', { fontFamily: 'Cinzel, serif', fontSize: '14px', color: '#88aaff', fontStyle: 'bold' }).setDepth(this.hudDepth);
+    this.add.text(W / 2, panelY + 2, `Tafel van ${this.data2.table}`, { fontFamily: 'Cinzel, serif', fontSize: '15px', color: '#f5c842', fontStyle: 'bold' }).setOrigin(0.5, 0).setDepth(this.hudDepth);
+    this.add.text(W - this.hpBarW - 20, panelY + 2, this.world.label, { fontFamily: 'Cinzel, serif', fontSize: '14px', color: '#ff8888', fontStyle: 'bold' }).setDepth(this.hudDepth);
 
-    // Row 1: HP bars
     this.knightHpBar = this.add.graphics().setDepth(this.hudDepth);
-    this.drawHpBar(this.knightHpBar, 20, panelY + 22, hpBarW, this.knightHp, 0x27ae60);
+    this.drawHpBar(this.knightHpBar, 20, this.hpBarY, this.hpBarW, this.knightHp, 0x27ae60);
     this.enemyHpBar = this.add.graphics().setDepth(this.hudDepth);
-    this.drawHpBar(this.enemyHpBar, W - hpBarW - 20, panelY + 22, hpBarW, this.enemyHp, 0xc0392b);
+    this.drawHpBar(this.enemyHpBar, W - this.hpBarW - 20, this.hpBarY, this.hpBarW, this.enemyHp, 0xc0392b);
 
-    // Row 2: Timer
     this.timerBar = this.add.graphics().setDepth(this.hudDepth);
-    this.timerText = this.add.text(W / 2, panelY + 50, '', {
-      fontFamily: 'Cinzel, serif', fontSize: '13px', color: '#aaaacc',
-    }).setOrigin(0.5, 0).setDepth(this.hudDepth);
+    this.timerText = this.add.text(W / 2, panelY + 50, '', { fontFamily: 'Cinzel, serif', fontSize: '13px', color: '#aaaacc' }).setOrigin(0.5, 0).setDepth(this.hudDepth);
+    this.comboDisplay = this.add.text(W / 2, panelY + 72, '', { fontFamily: 'Cinzel, serif', fontSize: '15px', color: '#ffcc00', fontStyle: 'bold' }).setOrigin(0.5, 0).setDepth(this.hudDepth);
 
-    // Row 3: Combo
-    this.comboDisplay = this.add.text(W / 2, panelY + 72, '', {
-      fontFamily: 'Cinzel, serif', fontSize: '15px', color: '#ffcc00', fontStyle: 'bold',
-    }).setOrigin(0.5, 0).setDepth(this.hudDepth);
-
-    // Row 4: Question
     if (isSchildknaap) {
       const qy = Math.round(H * 0.36);
       const qFontPx = Math.round(Math.max(34, Math.min(52, W / 18)));
@@ -158,32 +160,141 @@ export class BattleScene extends Phaser.Scene {
       qBg.fillRoundedRect(W / 2 - 220, qy - 44, 440, 88, 22);
       qBg.lineStyle(3, 0x7744cc, 1);
       qBg.strokeRoundedRect(W / 2 - 220, qy - 44, 440, 88, 22);
-      this.questionText = this.add.text(W / 2, qy, '', {
-        fontFamily: 'Cinzel, serif', fontSize: `${qFontPx}px`, color: '#ffffff', fontStyle: 'bold',
-        stroke: '#2d1b69', strokeThickness: 4,
-      }).setOrigin(0.5).setDepth(15);
+      this.questionText = this.add.text(W / 2, qy, '', { fontFamily: 'Cinzel, serif', fontSize: `${qFontPx}px`, color: '#ffffff', fontStyle: 'bold', stroke: '#2d1b69', strokeThickness: 4 }).setOrigin(0.5).setDepth(15);
     } else {
       const qFontPx = Math.round(Math.max(28, Math.min(42, W / 26)));
-      this.questionText = this.add.text(W / 2, panelY + 94, '', {
-        fontFamily: 'Cinzel, serif', fontSize: `${qFontPx}px`, color: '#ffffff', fontStyle: 'bold',
-        stroke: '#2d1b69', strokeThickness: 4,
-      }).setOrigin(0.5, 0).setDepth(this.hudDepth);
-    }
+      this.questionText = this.add.text(W / 2, panelY + 94, '', { fontFamily: 'Cinzel, serif', fontSize: `${qFontPx}px`, color: '#ffffff', fontStyle: 'bold', stroke: '#2d1b69', strokeThickness: 4 }).setOrigin(0.5, 0).setDepth(this.hudDepth);
 
-    // Row 5: Input (non-schildknaap only)
-    if (!isSchildknaap) {
       const inputBg = this.add.graphics().setDepth(this.hudDepth);
       inputBg.fillStyle(0x1a0a3e, 1);
       inputBg.fillRoundedRect(W / 2 - 100, panelY + 138, 200, 44, 10);
       inputBg.lineStyle(2, 0xf5c842, 1);
       inputBg.strokeRoundedRect(W / 2 - 100, panelY + 138, 200, 44, 10);
-
-      this.inputDisplay = this.add.text(W / 2, panelY + 160, '_', {
-        fontFamily: 'Cinzel, serif', fontSize: '28px', color: '#f5c842', fontStyle: 'bold',
-      }).setOrigin(0.5).setDepth(this.hudDepth);
-    } else {
-      this.inputDisplay = this.add.text(-9999, -9999, '');
+      this.inputDisplay = this.add.text(W / 2, panelY + 160, '_', { fontFamily: 'Cinzel, serif', fontSize: '28px', color: '#f5c842', fontStyle: 'bold' }).setOrigin(0.5).setDepth(this.hudDepth);
     }
+
+    if (isSchildknaap) this.inputDisplay = this.add.text(-9999, -9999, '');
+  }
+
+  private createHUDMobile(W: number, H: number) {
+    // Adaptive panel height fills the pre-computed hudOffset
+    const panelH = this.hudOffset - 15;
+    const panelY = H - panelH - 5;
+
+    // Compact row offsets for short landscape phones (H < 500)
+    const isShortScreen = H < 500;
+    const hpBarOff  = isShortScreen ? 14 : 18;
+    const timerOff  = isShortScreen ? 26 : 36;
+    const comboOff  = isShortScreen ? 37 : 50;
+    const questOff  = isShortScreen ? 48 : 66;
+    const ansOff    = isShortScreen ? 72 : 100;
+    const ansH      = isShortScreen ? 26 : 34;
+
+    this.hpBarW = Math.min(140, Math.max(55, Math.round((W - 200) / 2)));
+    this.hpBarY = panelY + hpBarOff;
+    this.timerBarW = 100;
+    this.timerBarCenterX = W / 2;
+    this.timerBarY = panelY + timerOff;
+
+    // Panel background
+    const panel = this.add.graphics().setDepth(this.hudDepth);
+    panel.fillStyle(0x0a0520, 0.92);
+    panel.fillRoundedRect(8, panelY - 6, W - 16, panelH + 12, 14);
+    panel.lineStyle(2, 0x4a2890, 1);
+    panel.strokeRoundedRect(8, panelY - 6, W - 16, panelH + 12, 14);
+
+    // Row 0: HP labels (12px)
+    this.add.text(20, panelY + 2, 'Ridder', { fontFamily: 'Cinzel, serif', fontSize: '12px', color: '#88aaff', fontStyle: 'bold' }).setDepth(this.hudDepth);
+    this.add.text(W / 2, panelY + 2, `Tafel van ${this.data2.table}`, { fontFamily: 'Cinzel, serif', fontSize: '13px', color: '#f5c842', fontStyle: 'bold' }).setOrigin(0.5, 0).setDepth(this.hudDepth);
+    this.add.text(W - this.hpBarW - 20, panelY + 2, this.world.label, { fontFamily: 'Cinzel, serif', fontSize: '12px', color: '#ff8888', fontStyle: 'bold' }).setDepth(this.hudDepth);
+
+    // Row 1: HP bars
+    this.knightHpBar = this.add.graphics().setDepth(this.hudDepth);
+    this.drawHpBar(this.knightHpBar, 20, this.hpBarY, this.hpBarW, this.knightHp, 0x27ae60);
+    this.enemyHpBar = this.add.graphics().setDepth(this.hudDepth);
+    this.drawHpBar(this.enemyHpBar, W - this.hpBarW - 20, this.hpBarY, this.hpBarW, this.enemyHp, 0xc0392b);
+
+    // Row 2: Timer bar (center)
+    this.timerBar = this.add.graphics().setDepth(this.hudDepth);
+    this.timerText = this.add.text(W / 2, panelY + timerOff, '', { fontFamily: 'Cinzel, serif', fontSize: '11px', color: '#aaaacc' }).setOrigin(0.5, 0).setDepth(this.hudDepth);
+    this.comboDisplay = this.add.text(W / 2, panelY + comboOff, '', { fontFamily: 'Cinzel, serif', fontSize: '13px', color: '#ffcc00', fontStyle: 'bold' }).setOrigin(0.5, 0).setDepth(this.hudDepth);
+
+    // Row 3: Question text
+    const qFontPx = Math.round(Math.max(isShortScreen ? 18 : 22, Math.min(30, W / 16)));
+    this.questionText = this.add.text(W / 2, panelY + questOff, '', {
+      fontFamily: 'Cinzel, serif', fontSize: `${qFontPx}px`, color: '#ffffff', fontStyle: 'bold',
+      stroke: '#2d1b69', strokeThickness: 3,
+    }).setOrigin(0.5, 0).setDepth(this.hudDepth);
+
+    // Row 4: Answer display
+    const ansY = panelY + ansOff;
+    const ansBg = this.add.graphics().setDepth(this.hudDepth);
+    ansBg.fillStyle(0x1a0a3e, 1);
+    ansBg.fillRoundedRect(W / 2 - 70, ansY, 140, ansH, 8);
+    ansBg.lineStyle(2, 0xf5c842, 1);
+    ansBg.strokeRoundedRect(W / 2 - 70, ansY, 140, ansH, 8);
+    this.inputDisplay = this.add.text(W / 2, ansY + ansH / 2, '_', {
+      fontFamily: 'Cinzel, serif', fontSize: isShortScreen ? '18px' : '22px', color: '#f5c842', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(this.hudDepth);
+
+    // Numpad: 2-row wide layout on short screens (H<500), 4-row narrow on taller screens
+    const numpadY = ansY + ansH + 4;
+    const gap = 4;
+    const numpadAvail = panelH - (numpadY - panelY) - 4;
+    const cols = isShortScreen ? 6 : 3;
+    const numRows = isShortScreen ? 2 : 4;
+    const btnW = Math.floor((W - 16 - (cols - 1) * gap) / cols);
+    const btnH = Math.max(isShortScreen ? 20 : 26, Math.floor((numpadAvail - (numRows - 1) * gap) / numRows));
+
+    const rows = isShortScreen
+      ? [['7', '8', '9', '4', '5', '6'], ['1', '2', '3', '0', '←', 'OK']]
+      : [['7', '8', '9'], ['4', '5', '6'], ['1', '2', '3'], ['←', '0', 'OK']];
+    rows.forEach((row, ri) => {
+      row.forEach((key, ci) => {
+        const bx = 8 + ci * (btnW + gap);
+        const by = numpadY + ri * (btnH + gap);
+        const isOK = key === 'OK';
+        const isDel = key === '←';
+
+        const btnContainer = this.add.container(bx + btnW / 2, by + btnH / 2).setDepth(this.hudDepth + 1);
+        const btnBg = this.add.graphics();
+
+        const drawBtn = (pressed: boolean) => {
+          btnBg.clear();
+          const fill = isOK ? (pressed ? 0x3d8a3d : 0x2d6a2d)
+                     : isDel ? (pressed ? 0x8a3d3d : 0x6a2d2d)
+                     :         (pressed ? 0x4d3b99 : 0x2d1b69);
+          btnBg.fillStyle(fill, 1);
+          btnBg.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
+          btnBg.lineStyle(1.5, isOK ? 0x55cc55 : isDel ? 0xcc5555 : 0x8855cc, 0.9);
+          btnBg.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
+        };
+        drawBtn(false);
+
+        const fontSize = Math.round(Math.max(14, Math.min(20, btnH * 0.52)));
+        const lbl = this.add.text(0, 0, key, {
+          fontFamily: 'Cinzel, serif', fontSize: `${fontSize}px`, fontStyle: 'bold',
+          color: isOK ? '#88ff88' : isDel ? '#ff8888' : '#ffffff',
+        }).setOrigin(0.5);
+
+        btnContainer.add([btnBg, lbl]);
+        btnContainer.setSize(btnW, btnH).setInteractive({ cursor: 'pointer' });
+        btnContainer.on('pointerdown', () => {
+          if (this.locked) return;
+          drawBtn(true);
+          if (isOK) {
+            if (this.playerInput.length > 0) this.submitAnswer(parseInt(this.playerInput, 10));
+          } else if (isDel) {
+            this.playerInput = this.playerInput.slice(0, -1);
+            this.updateInputDisplay();
+          } else {
+            if (this.playerInput.length < 4) { this.playerInput += key; this.updateInputDisplay(); }
+          }
+        });
+        btnContainer.on('pointerup', () => drawBtn(false));
+        btnContainer.on('pointerout', () => drawBtn(false));
+      });
+    });
   }
 
   private createParticles(W: number, H: number) {
@@ -338,16 +449,17 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private updateTimerBar() {
-    const W = this.scale.width; const H = this.scale.height;
-    const panelY = H - 195;
-    const barW = 180;
     const ratio = this.timeLeft / this.data2.timeLimit;
     const color = ratio > 0.5 ? 0x27ae60 : ratio > 0.25 ? 0xf39c12 : 0xc0392b;
+    const bx = this.timerBarCenterX - this.timerBarW / 2;
     this.timerBar.clear();
     this.timerBar.fillStyle(0x2c1b50, 1);
-    this.timerBar.fillRoundedRect(W / 2 - barW / 2, panelY + 48, barW, 10, 5);
-    this.timerBar.fillStyle(color, 1);
-    this.timerBar.fillRoundedRect(W / 2 - barW / 2, panelY + 48, barW * ratio, 10, 5);
+    this.timerBar.fillRoundedRect(bx, this.timerBarY, this.timerBarW, 10, 5);
+    const fillW = Math.max(0, this.timerBarW * ratio);
+    if (fillW > 0) {
+      this.timerBar.fillStyle(color, 1);
+      this.timerBar.fillRoundedRect(bx, this.timerBarY, fillW, 10, Math.min(5, fillW / 2));
+    }
     this.timerText.setText(`${this.timeLeft}s`);
   }
 
@@ -587,7 +699,8 @@ export class BattleScene extends Phaser.Scene {
   private drawHpBar(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, hp: number, color: number) {
     g.clear();
     g.fillStyle(0x2c1b50, 1); g.fillRoundedRect(x, y, w, 16, 8);
-    if (hp > 0) { g.fillStyle(color, 1); g.fillRoundedRect(x + 1, y + 1, (w - 2) * hp / 100, 14, 7); }
+    const hpFillW = (w - 2) * hp / 100;
+    if (hp > 0 && hpFillW > 1) { g.fillStyle(color, 1); g.fillRoundedRect(x + 1, y + 1, hpFillW, 14, Math.min(7, hpFillW / 2)); }
     g.lineStyle(1, 0x8855cc, 0.7); g.strokeRoundedRect(x, y, w, 16, 8);
     const lbl = this.add.text(x + w / 2, y + 8, `${hp}%`, {
       fontFamily: 'Cinzel, serif', fontSize: '12px', color: '#ffffff',
@@ -596,15 +709,12 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private redrawKnightHp() {
-    const W = this.scale.width; const H = this.scale.height;
-    const hpBarW = Math.min(220, Math.max(80, W / 2 - 230));
-    this.drawHpBar(this.knightHpBar, 20, H - 195 + 26, hpBarW, this.knightHp, 0x27ae60);
+    this.drawHpBar(this.knightHpBar, 20, this.hpBarY, this.hpBarW, this.knightHp, 0x27ae60);
   }
 
   private redrawEnemyHp() {
-    const W = this.scale.width; const H = this.scale.height;
-    const hpBarW = Math.min(220, Math.max(80, W / 2 - 230));
-    this.drawHpBar(this.enemyHpBar, W - hpBarW - 20, H - 195 + 26, hpBarW, this.enemyHp, 0xc0392b);
+    const W = this.scale.width;
+    this.drawHpBar(this.enemyHpBar, W - this.hpBarW - 20, this.hpBarY, this.hpBarW, this.enemyHp, 0xc0392b);
   }
 
   private endBattle() {

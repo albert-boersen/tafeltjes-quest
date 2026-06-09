@@ -14,6 +14,12 @@ html, body {
   font-family: 'Georgia', serif;
   color: #fff;
   overflow: hidden;
+  /* Mobile: prevent scroll, zoom, selection, and tap highlight */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
 }
 
 #game-container {
@@ -26,4 +32,53 @@ html, body {
 
 canvas {
   display: block;
+}
+
+/* ── Rotate hint ── */
+.rotate-hint {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #1a0a2e;
+  z-index: 9999;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+}
+
+/* pointer:coarse = touch device (phone/tablet), not desktop mouse.
+   The overlay uses position:fixed z-index:9999, so the game container
+   stays in the DOM and Phaser always gets correct canvas dimensions. */
+@media (orientation: portrait) and (pointer: coarse) {
+  .rotate-hint { display: flex; }
+}
+
+.rotate-phone {
+  width: 72px;
+  height: 112px;
+  animation: tilt-to-landscape 2.2s ease-in-out infinite;
+  transform-origin: center;
+  filter: drop-shadow(0 0 12px #f5c84266);
+}
+
+@keyframes tilt-to-landscape {
+  0%, 25%  { transform: rotate(0deg);   opacity: 1; }
+  60%, 85% { transform: rotate(90deg);  opacity: 1; }
+  95%      { transform: rotate(90deg);  opacity: 0.4; }
+  100%     { transform: rotate(0deg);   opacity: 0.4; }
+}
+
+.rotate-title {
+  font-family: 'Cinzel Decorative', 'Georgia', serif;
+  font-size: clamp(20px, 5vw, 28px);
+  color: #f5c842;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+}
+
+.rotate-sub {
+  font-family: 'Cinzel', 'Georgia', serif;
+  font-size: clamp(14px, 3.5vw, 18px);
+  color: #d4b8ff;
 }
