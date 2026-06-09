@@ -8,7 +8,7 @@ interface ResultData {
   totalCorrect: number;
   totalWrong: number;
   knightHp: number;
-  dragonHp: number;
+  enemyHp: number;
 }
 
 export class ResultScene extends Phaser.Scene {
@@ -21,7 +21,6 @@ export class ResultScene extends Phaser.Scene {
     const H = this.scale.height;
 
     drawCastleBackground(this, W, H);
-
     this.cameras.main.fadeIn(500);
 
     if (data.won) {
@@ -35,7 +34,6 @@ export class ResultScene extends Phaser.Scene {
   }
 
   private showVictory(data: ResultData, W: number, H: number) {
-    // Victory fireworks
     for (let i = 0; i < 8; i++) {
       this.time.delayedCall(i * 200, () => {
         this.spawnFirework(
@@ -45,10 +43,8 @@ export class ResultScene extends Phaser.Scene {
       });
     }
 
-    // Repeating fireworks
     this.time.addEvent({
-      delay: 1800,
-      loop: true,
+      delay: 1800, loop: true,
       callback: () => {
         this.spawnFirework(
           Phaser.Math.Between(80, W - 80),
@@ -57,42 +53,40 @@ export class ResultScene extends Phaser.Scene {
       },
     });
 
-    // Title
     const shadowTitle = this.add.text(W / 2 + 4, H * 0.18 + 4, 'GEWONNEN!', {
-      fontFamily: 'Georgia, serif', fontSize: '72px', color: '#7a4400', fontStyle: 'bold',
+      fontFamily: "'Cinzel Decorative', serif", fontSize: '72px', color: '#7a4400', fontStyle: 'bold',
     }).setOrigin(0.5).setAlpha(0);
 
     const title = this.add.text(W / 2, H * 0.18, 'GEWONNEN!', {
-      fontFamily: 'Georgia, serif', fontSize: '72px', color: '#f5c842', fontStyle: 'bold',
-      stroke: '#8b5a00', strokeThickness: 8,
+      fontFamily: "'Cinzel Decorative', serif", fontSize: '72px', color: '#f5c842', fontStyle: 'bold',
+      stroke: '#8b5a00', strokeThickness: 3,
     }).setOrigin(0.5).setAlpha(0).setScale(0.5);
 
     this.tweens.add({ targets: [title, shadowTitle], alpha: 1, scaleX: 1, scaleY: 1, duration: 600, ease: 'Back.out' });
     this.tweens.add({ targets: title, scaleX: 1.04, scaleY: 1.04, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.inOut', delay: 700 });
 
-    this.add.text(W / 2, H * 0.18 + 62, '⚔ De draak is verslagen! ⚔', {
-      fontFamily: 'Georgia, serif', fontSize: '22px', color: '#d4b8ff',
+    this.add.text(W / 2, H * 0.18 + 62, '⚔ De vijand is verslagen! ⚔', {
+      fontFamily: 'Cinzel, serif', fontSize: '22px', color: '#d4b8ff',
     }).setOrigin(0.5).setAlpha(0);
 
     const medals: Record<string, string> = {
+      schildknaap: '🛡 Schildknaap op de Oefening',
       leerling: '🥉 Leerling Ridder',
       ridder: '🥈 Ridder van het Koninkrijk',
       meester: '🥇 Meester Tovenaar',
     };
     const rank = this.add.text(W / 2, H * 0.18 + 95, medals[data.difficulty] || '⭐ Ridder', {
-      fontFamily: 'Georgia, serif', fontSize: '20px', color: '#f5c842',
+      fontFamily: 'Cinzel, serif', fontSize: '20px', color: '#f5c842',
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: rank, alpha: 1, duration: 500, delay: 800 });
   }
 
   private showDefeat(data: ResultData, W: number, H: number) {
-    // Dark overlay
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.35);
     overlay.fillRect(0, 0, W, H);
 
-    // Falling embers
     this.add.particles(0, 0, '__DEFAULT', {
       x: { min: 0, max: W },
       y: -10,
@@ -107,18 +101,18 @@ export class ResultScene extends Phaser.Scene {
     });
 
     const title = this.add.text(W / 2, H * 0.18, 'VERLOREN...', {
-      fontFamily: 'Georgia, serif', fontSize: '68px', color: '#cc3333', fontStyle: 'bold',
-      stroke: '#5a0000', strokeThickness: 8,
+      fontFamily: "'Cinzel Decorative', serif", fontSize: '68px', color: '#cc3333', fontStyle: 'bold',
+      stroke: '#5a0000', strokeThickness: 3,
     }).setOrigin(0.5).setAlpha(0).setScale(1.3);
 
     this.tweens.add({ targets: title, alpha: 1, scaleX: 1, scaleY: 1, duration: 600, ease: 'Power2.out' });
 
-    this.add.text(W / 2, H * 0.18 + 60, 'De draak heeft het kasteel veroverd...', {
-      fontFamily: 'Georgia, serif', fontSize: '20px', color: '#ff9988',
+    this.add.text(W / 2, H * 0.18 + 60, 'De vijand heeft gewonnen...', {
+      fontFamily: 'Cinzel, serif', fontSize: '20px', color: '#ff9988',
     }).setOrigin(0.5);
 
     this.add.text(W / 2, H * 0.18 + 90, 'Maar ridders geven nooit op! Probeer opnieuw.', {
-      fontFamily: 'Georgia, serif', fontSize: '17px', color: '#ffccaa',
+      fontFamily: 'Cinzel, serif', fontSize: '17px', color: '#ffccaa',
     }).setOrigin(0.5);
   }
 
@@ -146,16 +140,15 @@ export class ResultScene extends Phaser.Scene {
 
     stats.forEach(([left, right], i) => {
       this.add.text(panelX + 20, panelY + 16 + i * 36, left, {
-        fontFamily: 'Georgia, serif', fontSize: '18px', color: '#e0d0ff',
+        fontFamily: 'Cinzel, serif', fontSize: '18px', color: '#e0d0ff',
       });
       if (right) {
         this.add.text(panelX + panelW - 20, panelY + 16 + i * 36, right, {
-          fontFamily: 'Georgia, serif', fontSize: '18px', color: '#e0d0ff',
+          fontFamily: 'Cinzel, serif', fontSize: '18px', color: '#e0d0ff',
         }).setOrigin(1, 0);
       }
     });
 
-    // Accuracy bar
     const barY = panelY + panelH - 22;
     panel.fillStyle(0x2c1b50, 1);
     panel.fillRoundedRect(panelX + 20, barY, panelW - 40, 12, 6);
@@ -167,17 +160,16 @@ export class ResultScene extends Phaser.Scene {
 
   private showButtons(W: number, H: number, data: ResultData) {
     const btnY = H * 0.78;
+    const timeLimits: Record<string, number> = { schildknaap: 45, leerling: 30, ridder: 15, meester: 8 };
 
-    // Retry same table
     this.makeButton(W / 2 - 120, btnY, 210, 52, 'Opnieuw proberen', 0x2d6a4f, 0x27ae60, () => {
       this.cameras.main.fade(400, 0, 0, 0);
       this.time.delayedCall(400, () => this.scene.start('BattleScene', {
         table: data.table, difficulty: data.difficulty,
-        timeLimit: { leerling: 30, ridder: 15, meester: 8 }[data.difficulty] ?? 15,
+        timeLimit: timeLimits[data.difficulty] ?? 15,
       }));
     });
 
-    // Back to menu
     this.makeButton(W / 2 + 120, btnY, 210, 52, 'Terug naar menu', 0x4a2890, 0x6b3fc0, () => {
       this.cameras.main.fade(400, 0, 0, 0);
       this.time.delayedCall(400, () => this.scene.start('MenuScene'));
@@ -196,7 +188,7 @@ export class ResultScene extends Phaser.Scene {
     };
     drawBg(colorBase);
     const text = this.add.text(0, 0, label, {
-      fontFamily: 'Georgia, serif', fontSize: '17px', color: '#ffffff', fontStyle: 'bold',
+      fontFamily: 'Cinzel, serif', fontSize: '17px', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5);
     container.add([bg, text]);
     container.setSize(w, h).setInteractive({ cursor: 'pointer' });
@@ -224,7 +216,6 @@ export class ResultScene extends Phaser.Scene {
         onComplete: () => circle.destroy(),
       });
     }
-
     const flash = this.add.circle(x, y, 18, 0xffffff, 0.7);
     this.tweens.add({ targets: flash, alpha: 0, scaleX: 3, scaleY: 3, duration: 200, onComplete: () => flash.destroy() });
   }

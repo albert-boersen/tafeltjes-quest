@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 export interface DragonHandle {
   container: Phaser.GameObjects.Container;
   setRoaring(on: boolean): void;
+  setReacting(on: boolean): void;
 }
 
 export function createDragon(scene: Phaser.Scene, x: number, y: number): DragonHandle {
@@ -17,10 +18,8 @@ export function createDragon(scene: Phaser.Scene, x: number, y: number): DragonH
   container.add([idle, roar]);
   return {
     container,
-    setRoaring(on) {
-      idle.setVisible(!on);
-      roar.setVisible(on);
-    },
+    setRoaring(on) { idle.setVisible(!on); roar.setVisible(on); },
+    setReacting(on) { idle.setVisible(!on); roar.setVisible(on); },
   };
 }
 
@@ -29,7 +28,7 @@ export function createDragon(scene: Phaser.Scene, x: number, y: number): DragonH
 function drawIdle(g: Phaser.GameObjects.Graphics) {
   // Shadow
   g.fillStyle(0x000000, 0.15);
-  g.fillEllipse(0, 116, 160, 18);
+  g.fillEllipse(0, 126, 160, 18);
 
   // TAIL (sweeping right and down)
   g.fillStyle(0xaa1a1a, 1);
@@ -82,6 +81,17 @@ function drawIdle(g: Phaser.GameObjects.Graphics) {
       g.fillEllipse(sx, sy + 20, 20, 12);
     }
   }
+
+  // SPINE SPIKES — bases sit on body top surface, neck/head draw over the left ones
+  // sy values chosen so (sy+8) ≈ body top at that x: body top = 26 - 50*sqrt(1-(x/70)²)
+  g.fillStyle(0x881111, 1);
+  const spinePoints = [[-30, -27], [-14, -31], [2, -32], [18, -30], [34, -26], [50, -17]];
+  spinePoints.forEach(([sx, sy]) => {
+    g.fillTriangle(sx - 6, sy + 8, sx + 6, sy + 8, sx, sy - 22);
+    g.fillStyle(0xaa1414, 1);
+    g.fillTriangle(sx - 4, sy + 6, sx + 4, sy + 6, sx, sy - 16);
+    g.fillStyle(0x881111, 1);
+  });
 
   // NECK
   g.fillStyle(0xcc2222, 1);
@@ -142,16 +152,6 @@ function drawIdle(g: Phaser.GameObjects.Graphics) {
   g.fillTriangle(-73, -106, -65, -82, -55, -110);
   g.fillTriangle(-59, -102, -51, -80, -43, -106);
 
-  // SPINE SPIKES
-  g.fillStyle(0x881111, 1);
-  const spinePoints = [[-60, -38], [-46, -50], [-32, -58], [-18, -62], [-4, -60], [10, -52]];
-  spinePoints.forEach(([sx, sy]) => {
-    g.fillTriangle(sx - 6, sy + 8, sx + 6, sy + 8, sx, sy - 18);
-    g.fillStyle(0xaa1414, 1);
-    g.fillTriangle(sx - 4, sy + 6, sx + 4, sy + 6, sx, sy - 12);
-    g.fillStyle(0x881111, 1);
-  });
-
   // LEGS
   g.fillStyle(0xaa1a1a, 1);
   g.fillRoundedRect(-35, 72, 28, 48, 6);
@@ -172,7 +172,7 @@ function drawRoar(g: Phaser.GameObjects.Graphics) {
   // Same as idle but with open mouth and fire breath
 
   g.fillStyle(0x000000, 0.15);
-  g.fillEllipse(0, 116, 160, 18);
+  g.fillEllipse(0, 126, 160, 18);
 
   g.fillStyle(0xaa1a1a, 1);
   g.fillEllipse(80, 60, 60, 28);
@@ -212,6 +212,16 @@ function drawRoar(g: Phaser.GameObjects.Graphics) {
   for (let sx = -50; sx <= 50; sx += 22) {
     for (let sy = -10; sy <= 50; sy += 18) g.fillEllipse(sx, sy + 20, 20, 12);
   }
+
+  // SPINE SPIKES — bases sit on body top surface, neck/head draw over the left ones
+  g.fillStyle(0x881111, 1);
+  const spinePoints = [[-30, -27], [-14, -31], [2, -32], [18, -30], [34, -26], [50, -17]];
+  spinePoints.forEach(([sx, sy]) => {
+    g.fillTriangle(sx - 6, sy + 8, sx + 6, sy + 8, sx, sy - 22);
+    g.fillStyle(0xaa1414, 1);
+    g.fillTriangle(sx - 4, sy + 6, sx + 4, sy + 6, sx, sy - 16);
+    g.fillStyle(0x881111, 1);
+  });
 
   g.fillStyle(0xcc2222, 1);
   g.fillEllipse(-40, -18, 50, 40);
@@ -283,14 +293,6 @@ function drawRoar(g: Phaser.GameObjects.Graphics) {
   g.fillTriangle(-60, -104, -50, -78, -42, -108);
   g.fillStyle(0x7a1a1a, 1);
   g.fillTriangle(-73, -106, -65, -82, -55, -110);
-  g.fillStyle(0x881111, 1);
-  const spinePoints = [[-60, -38], [-46, -50], [-32, -58], [-18, -62], [-4, -60], [10, -52]];
-  spinePoints.forEach(([sx, sy]) => {
-    g.fillTriangle(sx - 6, sy + 8, sx + 6, sy + 8, sx, sy - 18);
-    g.fillStyle(0xaa1414, 1);
-    g.fillTriangle(sx - 4, sy + 6, sx + 4, sy + 6, sx, sy - 12);
-    g.fillStyle(0x881111, 1);
-  });
 
   g.fillStyle(0xaa1a1a, 1);
   g.fillRoundedRect(-35, 72, 28, 48, 6);

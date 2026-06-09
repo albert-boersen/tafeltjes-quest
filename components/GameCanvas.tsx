@@ -15,11 +15,14 @@ export default function GameCanvas() {
       const { BattleScene } = await import('@/game/scenes/BattleScene');
       const { ResultScene } = await import('@/game/scenes/ResultScene');
 
+      // Make all Text objects render at native screen density before boot
+      (Phaser.GameObjects.Text as any).DEFAULT_RESOLUTION = window.devicePixelRatio || 2;
+
       new Phaser.Game({
         type: Phaser.AUTO,
         backgroundColor: '#1a0a2e',
         antialias: true,
-        roundPixels: false,
+        roundPixels: true,
         parent: 'game-container',
         scene: [MenuScene, BattleScene, ResultScene],
         scale: {

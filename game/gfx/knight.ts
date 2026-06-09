@@ -3,6 +3,8 @@ import Phaser from 'phaser';
 export interface KnightHandle {
   container: Phaser.GameObjects.Container;
   setAttacking(on: boolean): void;
+  /** Flash the sword with a brief golden glow (added to container, removed automatically) */
+  flashSword(scene: Phaser.Scene): void;
 }
 
 export function createKnight(scene: Phaser.Scene, x: number, y: number): KnightHandle {
@@ -20,6 +22,20 @@ export function createKnight(scene: Phaser.Scene, x: number, y: number): KnightH
     setAttacking(on) {
       idle.setVisible(!on);
       atk.setVisible(on);
+    },
+    flashSword(scene: Phaser.Scene) {
+      // Bright golden glow over the sword area in container-local space
+      const glow = scene.add.graphics();
+      glow.fillStyle(0xf5c842, 0.55);
+      glow.fillRect(36, -120, 22, 130);
+      glow.fillStyle(0xffffff, 0.35);
+      glow.fillRect(38, -118, 8, 120);
+      container.add(glow);
+      scene.tweens.add({
+        targets: glow, alpha: 0, scaleX: 2.2, scaleY: 1.1, duration: 340,
+        ease: 'Power2.out',
+        onComplete: () => { container.remove(glow, true); },
+      });
     },
   };
 }
