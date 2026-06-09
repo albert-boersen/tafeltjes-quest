@@ -1,22 +1,26 @@
 import Phaser from 'phaser';
 import { drawCastleBackground } from '../gfx/castle';
 import { createKnight } from '../gfx/knight';
-import { createDragon } from '../gfx/dragon';
+import { worldForTable, EnemyHandle } from '../gfx/worlds';
 import { getCooldown } from '../state/cooldown';
+import { getHighscore } from '../state/highscore';
+import { isTableUnlocked } from '../state/progress';
 import { playClick } from '../audio/soundFX';
 
 type Difficulty = 'schildknaap' | 'leerling' | 'ridder' | 'meester';
 
 export class MenuScene extends Phaser.Scene {
   private stars: Phaser.GameObjects.Arc[] = [];
-  private selectedTable = 5;
+  private selectedTable = 1;
   private selectedDifficulty: Difficulty = 'ridder';
   private tableButtons: Phaser.GameObjects.Container[] = [];
   private diffBtns: Record<string, Phaser.GameObjects.Container> = {};
+  private enemyHandle?: EnemyHandle;
+  private enemyBobTween?: Phaser.Tweens.Tween;
+  private charScale = 1;
+  private enemyYBase = 0;
 
-  constructor() {
-    super('MenuScene');
-  }
+  constructor() { super('MenuScene'); }
 
   create() {
     const W = this.scale.width;
@@ -35,27 +39,24 @@ export class MenuScene extends Phaser.Scene {
       this.stars.push(s);
     }
 
-    const charScale = Math.max(0.38, Math.min(0.85, H / 576 * 0.75));
+    this.charScale = Math.max(0.38, Math.min(0.85, H / 576 * 0.75));
 
-    const knightX = Math.round(78 * charScale) + 26;
+    const knightX = Math.round(78 * this.charScale) + 26;
     const knightY = H * 0.50;
     const { container: knightC } = createKnight(this, knightX, knightY);
-    knightC.setScale(charScale);
+    knightC.setScale(this.charScale);
     this.tweens.add({ targets: knightC, y: knightY - 10, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
 
-    const dragonX = W - Math.round(150 * charScale) - 26;
-    const dragonY = H * 0.48;
-    const { container: dragonC } = createDragon(this, dragonX, dragonY);
-    dragonC.setScale(charScale);
-    this.tweens.add({ targets: dragonC, y: dragonY + 10, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    this.enemyYBase = H * 0.48;
+    this.spawnEnemy(W);
 
     const titleY      = Math.round(H * 0.10);
     const subtitleY   = Math.round(H * 0.20);
     const tableLabelY = Math.round(H * 0.30);
     const tableBtnY   = Math.round(H * 0.39);
-    const diffLabelY  = Math.round(H * 0.51);
-    const diffBtnY    = Math.round(H * 0.60);
-    const startBtnY   = Math.round(H * 0.76);
+    const diffLabelY  = Math.round(H * 0.53);
+    const diffBtnY    = Math.round(H * 0.62);
+    const startBtnY   = Math.round(H * 0.77);
 
     const titleSize   = `${Math.round(Math.max(32, Math.min(60, H * 0.09)))}px`;
     const sectionSize = `${Math.round(Math.max(14, Math.min(22, H * 0.037)))}px`;
@@ -148,40 +149,51 @@ export class MenuScene extends Phaser.Scene {
     });
 
     this.input.keyboard!.on('keydown-LEFT', () => {
+      const prev = this.selectedTable;
       this.selectedTable = Math.max(1, this.selectedTable - 1);
-      this.refreshTableButtons();
+      if (this.selectedTable !== prev) { this.refreshTableButtons(); this.spawnEnemy(W); }
     });
     this.input.keyboard!.on('keydown-RIGHT', () => {
+      const prev = this.selectedTable;
       this.selectedTable = Math.min(10, this.selectedTable + 1);
-      this.refreshTableButtons();
+      if (this.selectedTable !== prev) { this.refreshTableButtons(); this.spawnEnemy(W); }
     });
     this.input.keyboard!.on('keydown-ENTER', () => this.startGame());
+  }
+
+  private spawnEnemy(W: number) {
+    this.enemyBobTween?.remove();
+    this.enemyHandle?.container.destroy(true);
+
+    const world = worldForTable(this.selectedTable);
+    const ex = W - Math.round(world.enemyRight * this.charScale) - 26;
+    this.enemyHandle = world.createEnemy(this, ex, this.enemyYBase);
+    this.enemyHandle.container.setScale(this.charScale).setDepth(4);
+    this.enemyBobTween = this.tweens.add({
+      targets: this.enemyHandle.container, y: this.enemyYBase + 10,
+      duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.inOut',
+    });
   }
 
   private makeTableButton(x: number, y: number, w: number, h: number, table: number, fontPx = 22) {
     const container = this.add.container(x, y);
 
     const bg = this.add.graphics();
-    bg.fillStyle(0x3d1a6b, 1);
-    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 8);
-    bg.lineStyle(2, 0xf5c842, 1);
-    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 8);
-
     const label = this.add.text(0, 0, `${table}`, {
       fontFamily: 'Cinzel, serif', fontSize: `${fontPx}px`, color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5);
-
-    // Graphics overlay for cooldown indicator — avoids Text canvas-null crash
     const cdOverlay = this.add.graphics();
 
     container.add([bg, label, cdOverlay]);
     container.setSize(w, h);
     container.setInteractive({ cursor: 'pointer' });
     container.on('pointerdown', () => {
+      if (!isTableUnlocked(table)) return;
       if (getCooldown(table) > 0) return;
       playClick();
       this.selectedTable = table;
       this.refreshTableButtons();
+      this.spawnEnemy(this.scale.width);
     });
 
     (container as any).__table = table;
@@ -196,28 +208,42 @@ export class MenuScene extends Phaser.Scene {
 
   private refreshTableButtons() {
     this.tableButtons.forEach(btn => {
-      const t = (btn as any).__table as number;
-      const bg = (btn as any).__bg as Phaser.GameObjects.Graphics;
+      const t    = (btn as any).__table as number;
+      const bg   = (btn as any).__bg as Phaser.GameObjects.Graphics;
       const label = (btn as any).__label as Phaser.GameObjects.Text;
-      const cdOverlay = (btn as any).__cdOverlay as Phaser.GameObjects.Graphics;
-      const w = ((btn as any).__w as number) || 68;
-      const h = ((btn as any).__h as number) || 46;
-      const r = Math.max(4, Math.round(w * 0.12));
-      const cd = getCooldown(t);
-      bg.clear();
-      cdOverlay.clear();
+      const over = (btn as any).__cdOverlay as Phaser.GameObjects.Graphics;
+      const w    = ((btn as any).__w as number) || 68;
+      const h    = ((btn as any).__h as number) || 46;
+      const r    = Math.max(4, Math.round(w * 0.12));
+      bg.clear(); over.clear();
 
-      if (cd > 0) {
+      const locked = !isTableUnlocked(t);
+      const cd     = getCooldown(t);
+
+      if (locked) {
+        bg.fillStyle(0x150822, 1);
+        bg.fillRoundedRect(-w / 2, -h / 2, w, h, r);
+        bg.lineStyle(1, 0x331155, 1);
+        bg.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
+        label.setTint(0x332244);
+        btn.setScale(0.9);
+        // Draw simple lock: arch + body
+        over.lineStyle(2, 0x554477, 0.85);
+        over.strokeCircle(0, -h * 0.18, h * 0.16);
+        over.fillStyle(0x554477, 0.85);
+        over.fillRoundedRect(-h * 0.18, -h * 0.07, h * 0.36, h * 0.26, 3);
+        over.fillStyle(0x150822, 1);
+        over.fillCircle(0, h * 0.02, h * 0.07);
+      } else if (cd > 0) {
         bg.fillStyle(0x1a1030, 1);
         bg.fillRoundedRect(-w / 2, -h / 2, w, h, r);
         bg.lineStyle(1, 0x443366, 1);
         bg.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
         label.setTint(0x444444);
         btn.setScale(0.95);
-        // Draw diagonal cross to mark as unavailable
-        cdOverlay.lineStyle(2, 0x553366, 0.8);
-        cdOverlay.lineBetween(-w / 2 + 5, -h / 2 + 5, w / 2 - 5, h / 2 - 5);
-        cdOverlay.lineBetween(w / 2 - 5, -h / 2 + 5, -w / 2 + 5, h / 2 - 5);
+        over.lineStyle(2, 0x553366, 0.8);
+        over.lineBetween(-w / 2 + 5, -h / 2 + 5, w / 2 - 5, h / 2 - 5);
+        over.lineBetween(w / 2 - 5, -h / 2 + 5, -w / 2 + 5, h / 2 - 5);
       } else if (t === this.selectedTable) {
         bg.fillStyle(0xf5c842, 1);
         bg.fillRoundedRect(-w / 2, -h / 2, w, h, r);
@@ -232,6 +258,20 @@ export class MenuScene extends Phaser.Scene {
         bg.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
         label.clearTint();
         btn.setScale(1);
+      }
+
+      // Highscore stars drawn as filled dots — avoids Phaser Text canvas null issues
+      if (!locked) {
+        const hs = getHighscore(t);
+        const starCount = hs ? hs.stars : 0;
+        const dotR = Math.max(2, Math.round(w * 0.055));
+        const spacing = dotR * 2.6;
+        for (let s = 0; s < 3; s++) {
+          const sx = (s - 1) * spacing;
+          const sy = h / 2 + dotR + 4;
+          over.fillStyle(s < starCount ? 0xf5c842 : 0x443366, s < starCount ? 1 : 0.55);
+          over.fillCircle(sx, sy, dotR);
+        }
       }
     });
   }
@@ -290,12 +330,16 @@ export class MenuScene extends Phaser.Scene {
     const w = 240, h = 64;
 
     const bg = this.add.graphics();
-    bg.fillStyle(0xc0392b, 1);
-    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 14);
-    bg.lineStyle(3, 0xf5c842, 1);
-    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 14);
+    const drawBg = (hover: boolean) => {
+      bg.clear();
+      bg.fillStyle(hover ? 0xe74c3c : 0xc0392b, 1);
+      bg.fillRoundedRect(-w / 2, -h / 2, w, h, 14);
+      bg.lineStyle(3, 0xf5c842, 1);
+      bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 14);
+    };
+    drawBg(false);
 
-    const label = this.add.text(0, 0, '⚔  AANVALLEN!  ⚔', {
+    const label = this.add.text(0, 0, 'AANVALLEN!', {
       fontFamily: 'Cinzel, serif', fontSize: '24px', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5);
 
@@ -305,22 +349,25 @@ export class MenuScene extends Phaser.Scene {
 
     this.tweens.add({ targets: container, scaleX: 1.04, scaleY: 1.04, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
 
-    container.on('pointerover', () => { bg.clear(); bg.fillStyle(0xe74c3c, 1); bg.fillRoundedRect(-w/2,-h/2,w,h,14); bg.lineStyle(3,0xf5c842,1); bg.strokeRoundedRect(-w/2,-h/2,w,h,14); });
-    container.on('pointerout', () => { bg.clear(); bg.fillStyle(0xc0392b, 1); bg.fillRoundedRect(-w/2,-h/2,w,h,14); bg.lineStyle(3,0xf5c842,1); bg.strokeRoundedRect(-w/2,-h/2,w,h,14); });
+    container.on('pointerover', () => drawBg(true));
+    container.on('pointerout', () => drawBg(false));
     container.on('pointerdown', () => { playClick(); this.startGame(); });
   }
 
   private startGame() {
-    // If selected table is on cooldown, pick first available
     let table = this.selectedTable;
-    if (getCooldown(table) > 0) {
-      const available = [1,2,3,4,5,6,7,8,9,10].find(t => getCooldown(t) === 0);
-      if (available) { table = available; this.selectedTable = available; this.refreshTableButtons(); }
+    if (!isTableUnlocked(table) || getCooldown(table) > 0) {
+      const available = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].find(t => isTableUnlocked(t) && getCooldown(t) === 0);
+      if (available == null) return;
+      table = available;
+      this.selectedTable = available;
+      this.refreshTableButtons();
+      this.spawnEnemy(this.scale.width);
     }
     const timeMap: Record<Difficulty, number> = { schildknaap: 45, leerling: 30, ridder: 15, meester: 8 };
     this.cameras.main.fade(500, 0, 0, 0);
     this.time.delayedCall(500, () => {
-      this.scene.start('BattleScene', {
+      this.scene.start('CharacterScene', {
         table,
         difficulty: this.selectedDifficulty,
         timeLimit: timeMap[this.selectedDifficulty],

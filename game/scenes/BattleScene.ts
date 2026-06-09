@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { createKnight, KnightHandle } from '../gfx/knight';
-import { EnemyHandle, WORLDS, WorldDef } from '../gfx/worlds';
+import { EnemyHandle, worldForTable, WorldDef } from '../gfx/worlds';
 import { recordResult, tickCooldowns } from '../state/cooldown';
+import { getSelectedTheme } from '../state/character';
 import {
   playCorrect, playWrong, playAttack, playDragonRoar,
-  playTimerTick, playTimerUrgent, playVictory, playDefeat, playWorldTransition, playCombo,
+  playTimerTick, playTimerUrgent, playVictory, playDefeat, playCombo,
 } from '../audio/soundFX';
 
 interface BattleData {
@@ -21,13 +22,13 @@ export class BattleScene extends Phaser.Scene {
   private enemyHpBar!: Phaser.GameObjects.Graphics;
   private questionText!: Phaser.GameObjects.Text;
   private inputDisplay!: Phaser.GameObjects.Text;
-  private feedbackText!: Phaser.GameObjects.Text;
   private timerBar!: Phaser.GameObjects.Graphics;
   private timerText!: Phaser.GameObjects.Text;
+  private comboDisplay!: Phaser.GameObjects.Text;
   private knight!: KnightHandle;
   private enemy!: EnemyHandle;
   private bgContainer?: Phaser.GameObjects.Container;
-  private currentWorld?: WorldDef;
+  private world!: WorldDef;
   private knightBaseX = 0;
   private knightBaseY = 0;
   private enemyBaseX = 0;
@@ -37,15 +38,14 @@ export class BattleScene extends Phaser.Scene {
   private playerInput = '';
   private timeLeft = 15;
   private timerEvent?: Phaser.Time.TimerEvent;
-  private correctStreak = 0;
+  private combo = 0;
   private totalCorrect = 0;
   private totalWrong = 0;
   private roundsDone = 0;
   private readonly TOTAL_ROUNDS = 10;
   private locked = false;
   private choiceContainer?: Phaser.GameObjects.Container;
-  private hudDepth = 10;
-  private question = { a: 0, b: 0 };
+  private readonly hudDepth = 10;
 
   constructor() { super('BattleScene'); }
 
@@ -54,12 +54,11 @@ export class BattleScene extends Phaser.Scene {
     this.knightHp = 100;
     this.enemyHp = 100;
     this.playerInput = '';
-    this.correctStreak = 0;
+    this.combo = 0;
     this.totalCorrect = 0;
     this.totalWrong = 0;
     this.roundsDone = 0;
     this.locked = false;
-    this.currentWorld = undefined;
     tickCooldowns(data.table);
   }
 
@@ -68,26 +67,25 @@ export class BattleScene extends Phaser.Scene {
     const H = this.scale.height;
 
     this.charScale = Math.max(0.55, Math.min(1.4, H / 576));
-    const hudTop = H - 170;
+    const hudTop = H - 200;
+
+    this.world = worldForTable(this.data2.table);
+
+    this.bgContainer = this.world.drawBg(this, W, H);
+    this.bgContainer.setDepth(0);
 
     this.knightBaseX = Math.round(78 * this.charScale) + 35;
     this.knightBaseY = hudTop - Math.round(92 * this.charScale);
-    // enemyBaseX/Y will be set when first world is picked in nextQuestion
 
-    // Initial background (castle, will be swapped on first question)
-    const firstWorld = WORLDS[0];
-    this.bgContainer = firstWorld.drawBg(this, W, H);
-    this.bgContainer.setDepth(0);
+    this.computeEnemyPos(W, H);
 
-    this.knight = createKnight(this, this.knightBaseX, this.knightBaseY);
+    const theme = getSelectedTheme();
+    this.knight = createKnight(this, this.knightBaseX, this.knightBaseY, theme.colors);
     this.knight.container.setScale(this.charScale).setDepth(5);
     this.tweens.add({ targets: this.knight.container, y: this.knightBaseY - 10, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
 
-    // Placeholder enemy will be replaced by nextQuestion
-    this.computeEnemyPos(firstWorld, W, H);
-    this.enemy = firstWorld.createEnemy(this, this.enemyBaseX, this.enemyBaseY);
+    this.enemy = this.world.createEnemy(this, this.enemyBaseX, this.enemyBaseY);
     this.enemy.container.setScale(this.charScale).setDepth(5);
-    this.currentWorld = firstWorld;
     this.tweens.add({ targets: this.enemy.container, y: this.enemyBaseY + 12, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
 
     this.createHUD(W, H);
@@ -98,78 +96,62 @@ export class BattleScene extends Phaser.Scene {
     this.nextQuestion();
   }
 
-  private computeEnemyPos(world: WorldDef, W: number, H: number) {
-    const hudTop = H - 170;
-    // No x-flip: characters face left naturally, position by right (back) extent
-    this.enemyBaseX = W - Math.round(world.enemyRight * this.charScale) - 35;
-    this.enemyBaseY = hudTop - Math.round(world.enemyFoot * this.charScale);
-  }
-
-  private swapWorld(newWorld: WorldDef, onDone: () => void) {
-    if (newWorld.id === this.currentWorld?.id) { onDone(); return; }
-
-    const W = this.scale.width; const H = this.scale.height;
-    playWorldTransition();
-
-    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000).setAlpha(0).setDepth(200);
-    this.tweens.add({
-      targets: overlay, alpha: 0.92, duration: 160,
-      onComplete: () => {
-        // Destroy old background
-        this.bgContainer?.destroy();
-        this.bgContainer = newWorld.drawBg(this, W, H);
-        this.bgContainer.setDepth(0);
-
-        // Destroy old enemy
-        this.tweens.killTweensOf(this.enemy.container);
-        this.enemy.container.destroy();
-        this.computeEnemyPos(newWorld, W, H);
-        this.enemy = newWorld.createEnemy(this, this.enemyBaseX, this.enemyBaseY);
-        this.enemy.container.setScale(this.charScale).setDepth(5);
-        this.tweens.add({ targets: this.enemy.container, y: this.enemyBaseY + 12, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
-
-        this.currentWorld = newWorld;
-
-        this.tweens.add({
-          targets: overlay, alpha: 0, duration: 180,
-          onComplete: () => { overlay.destroy(); onDone(); },
-        });
-      },
-    });
+  private computeEnemyPos(W: number, H: number) {
+    const hudTop = H - 200;
+    this.enemyBaseX = W - Math.round(this.world.enemyRight * this.charScale) - 35;
+    this.enemyBaseY = hudTop - Math.round(this.world.enemyFoot * this.charScale);
   }
 
   private createHUD(W: number, H: number) {
-    const panelH = 150;
+    // Layout (top-to-bottom inside panel):
+    //  +0  HP labels
+    //  +22 HP bars          (18px tall)
+    //  +48 Timer bar        (12px) + time label
+    //  +72 Combo display
+    //  +94 Question text    (~36px font)
+    // +138 Input box        (44px tall)  → total ≈ 182px
+    const panelH = 185;
     const panelY = H - panelH - 10;
-    const hpBarW = Math.min(220, Math.max(80, W / 2 - 230));
+    const hpBarW = Math.min(220, Math.max(80, W / 2 - 200));
     const isSchildknaap = this.data2.difficulty === 'schildknaap';
 
     const panel = this.add.graphics().setDepth(this.hudDepth);
-    panel.fillStyle(0x0a0520, 0.88);
-    panel.fillRoundedRect(10, panelY - 6, W - 20, panelH + 16, 14);
+    panel.fillStyle(0x0a0520, 0.90);
+    panel.fillRoundedRect(10, panelY - 8, W - 20, panelH + 18, 14);
     panel.lineStyle(2, 0x4a2890, 1);
-    panel.strokeRoundedRect(10, panelY - 6, W - 20, panelH + 16, 14);
+    panel.strokeRoundedRect(10, panelY - 8, W - 20, panelH + 18, 14);
 
-    this.add.text(20, panelY + 2, '⚔ Ridder', { fontFamily: 'Cinzel, serif', fontSize: '15px', color: '#88aaff', fontStyle: 'bold' }).setDepth(this.hudDepth);
-    this.knightHpBar = this.add.graphics().setDepth(this.hudDepth);
-    this.drawHpBar(this.knightHpBar, 20, panelY + 24, hpBarW, this.knightHp, 0x27ae60);
-
-    this.add.text(W - hpBarW - 20, panelY + 2, '👾 Vijand', { fontFamily: 'Cinzel, serif', fontSize: '15px', color: '#ff8888', fontStyle: 'bold' }).setDepth(this.hudDepth);
-    this.enemyHpBar = this.add.graphics().setDepth(this.hudDepth);
-    this.drawHpBar(this.enemyHpBar, W - hpBarW - 20, panelY + 24, hpBarW, this.enemyHp, 0xc0392b);
-
+    // Row 0: HP labels
+    this.add.text(20, panelY + 2, 'Ridder', {
+      fontFamily: 'Cinzel, serif', fontSize: '14px', color: '#88aaff', fontStyle: 'bold',
+    }).setDepth(this.hudDepth);
     this.add.text(W / 2, panelY + 2, `Tafel van ${this.data2.table}`, {
-      fontFamily: 'Cinzel, serif', fontSize: '16px', color: '#f5c842', fontStyle: 'bold',
+      fontFamily: 'Cinzel, serif', fontSize: '15px', color: '#f5c842', fontStyle: 'bold',
     }).setOrigin(0.5, 0).setDepth(this.hudDepth);
+    this.add.text(W - hpBarW - 20, panelY + 2, this.world.label, {
+      fontFamily: 'Cinzel, serif', fontSize: '14px', color: '#ff8888', fontStyle: 'bold',
+    }).setDepth(this.hudDepth);
 
+    // Row 1: HP bars
+    this.knightHpBar = this.add.graphics().setDepth(this.hudDepth);
+    this.drawHpBar(this.knightHpBar, 20, panelY + 22, hpBarW, this.knightHp, 0x27ae60);
+    this.enemyHpBar = this.add.graphics().setDepth(this.hudDepth);
+    this.drawHpBar(this.enemyHpBar, W - hpBarW - 20, panelY + 22, hpBarW, this.enemyHp, 0xc0392b);
+
+    // Row 2: Timer
     this.timerBar = this.add.graphics().setDepth(this.hudDepth);
-    this.timerText = this.add.text(W / 2, panelY + 24, '', {
+    this.timerText = this.add.text(W / 2, panelY + 50, '', {
       fontFamily: 'Cinzel, serif', fontSize: '13px', color: '#aaaacc',
     }).setOrigin(0.5, 0).setDepth(this.hudDepth);
 
+    // Row 3: Combo
+    this.comboDisplay = this.add.text(W / 2, panelY + 72, '', {
+      fontFamily: 'Cinzel, serif', fontSize: '15px', color: '#ffcc00', fontStyle: 'bold',
+    }).setOrigin(0.5, 0).setDepth(this.hudDepth);
+
+    // Row 4: Question
     if (isSchildknaap) {
-      // Question floats center-screen with its own dark backdrop
-      const qy = Math.round(H * 0.38);
+      const qy = Math.round(H * 0.36);
       const qFontPx = Math.round(Math.max(34, Math.min(52, W / 18)));
       const qBg = this.add.graphics().setDepth(14);
       qBg.fillStyle(0x060318, 0.94);
@@ -178,31 +160,30 @@ export class BattleScene extends Phaser.Scene {
       qBg.strokeRoundedRect(W / 2 - 220, qy - 44, 440, 88, 22);
       this.questionText = this.add.text(W / 2, qy, '', {
         fontFamily: 'Cinzel, serif', fontSize: `${qFontPx}px`, color: '#ffffff', fontStyle: 'bold',
-        stroke: '#2d1b69', strokeThickness: 5,
+        stroke: '#2d1b69', strokeThickness: 4,
       }).setOrigin(0.5).setDepth(15);
     } else {
-      const questionFontPx = Math.round(Math.max(26, Math.min(40, W / 28)));
-      this.questionText = this.add.text(W / 2, panelY + 44, '', {
-        fontFamily: 'Cinzel, serif', fontSize: `${questionFontPx}px`, color: '#ffffff', fontStyle: 'bold',
+      const qFontPx = Math.round(Math.max(28, Math.min(42, W / 26)));
+      this.questionText = this.add.text(W / 2, panelY + 94, '', {
+        fontFamily: 'Cinzel, serif', fontSize: `${qFontPx}px`, color: '#ffffff', fontStyle: 'bold',
         stroke: '#2d1b69', strokeThickness: 4,
       }).setOrigin(0.5, 0).setDepth(this.hudDepth);
     }
 
+    // Row 5: Input (non-schildknaap only)
     if (!isSchildknaap) {
       const inputBg = this.add.graphics().setDepth(this.hudDepth);
       inputBg.fillStyle(0x1a0a3e, 1);
-      inputBg.fillRoundedRect(W / 2 - 90, panelY + 95, 180, 46, 10);
+      inputBg.fillRoundedRect(W / 2 - 100, panelY + 138, 200, 44, 10);
       inputBg.lineStyle(2, 0xf5c842, 1);
-      inputBg.strokeRoundedRect(W / 2 - 90, panelY + 95, 180, 46, 10);
+      inputBg.strokeRoundedRect(W / 2 - 100, panelY + 138, 200, 44, 10);
 
-      this.inputDisplay = this.add.text(W / 2, panelY + 118, '_', {
+      this.inputDisplay = this.add.text(W / 2, panelY + 160, '_', {
         fontFamily: 'Cinzel, serif', fontSize: '28px', color: '#f5c842', fontStyle: 'bold',
       }).setOrigin(0.5).setDepth(this.hudDepth);
     } else {
       this.inputDisplay = this.add.text(-9999, -9999, '');
     }
-
-    this.feedbackText = this.add.text(-9999, -9999, '');
   }
 
   private createParticles(W: number, H: number) {
@@ -239,37 +220,25 @@ export class BattleScene extends Phaser.Scene {
     this.inputDisplay.setText(this.playerInput || '_');
   }
 
-  private pickNextWorld(): WorldDef {
-    const others = WORLDS.filter(w => w.id !== this.currentWorld?.id);
-    return Phaser.Utils.Array.GetRandom(others) as WorldDef;
-  }
-
   private nextQuestion() {
     if (this.roundsDone >= this.TOTAL_ROUNDS) { this.endBattle(); return; }
     this.playerInput = '';
     this.updateInputDisplay();
-    this.feedbackText.setText('');
-    this.locked = true; // lock during world transition
+    this.locked = false;
+    this.destroyChoiceButtons();
 
-    const nextWorld = this.pickNextWorld();
-    this.swapWorld(nextWorld, () => {
-      this.locked = false;
-      this.destroyChoiceButtons();
+    const b = Phaser.Utils.Array.GetRandom([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) as number;
+    const a = this.data2.table;
+    this.currentAnswer = a * b;
+    this.questionText.setText(`${b} x ${a} = ?`);
+    this.questionText.setAlpha(0).setScale(1.3);
+    this.tweens.add({ targets: this.questionText, alpha: 1, scaleX: 1, scaleY: 1, duration: 200, ease: 'Back.out' });
 
-      const b = Phaser.Utils.Array.GetRandom([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) as number;
-      const a = this.data2.table;
-      this.question = { a, b };
-      this.currentAnswer = a * b;
-      this.questionText.setText(`${b} × ${a} = ?`);
-      this.questionText.setAlpha(0).setScale(1.3);
-      this.tweens.add({ targets: this.questionText, alpha: 1, scaleX: 1, scaleY: 1, duration: 200, ease: 'Back.out' });
+    if (this.data2.difficulty === 'schildknaap') {
+      this.createChoiceButtons(this.generateChoices(this.currentAnswer, a));
+    }
 
-      if (this.data2.difficulty === 'schildknaap') {
-        this.createChoiceButtons(this.generateChoices(this.currentAnswer, a));
-      }
-
-      this.startTimer();
-    });
+    this.startTimer();
   }
 
   private generateChoices(correct: number, table: number): number[] {
@@ -280,21 +249,17 @@ export class BattleScene extends Phaser.Scene {
       if (c > 0 && c !== correct) choices.add(c);
       if (choices.size === 4) break;
     }
-    // Fill with random if needed
     while (choices.size < 4) choices.add(correct + Math.floor(Math.random() * 20) - 10);
-    const arr = Array.from(choices).slice(0, 4);
-    return arr.sort(() => Math.random() - 0.5);
+    return Array.from(choices).slice(0, 4).sort(() => Math.random() - 0.5);
   }
 
   private createChoiceButtons(choices: number[]) {
     const W = this.scale.width; const H = this.scale.height;
-    // Float above the HUD panel, below the question text (~H*0.38)
     const btnW = Math.min(190, Math.round(W * 0.28));
     const btnH = 62;
     const gap = 14;
     const topY = Math.round(H * 0.52);
 
-    // Panel background enclosing the 2×2 grid
     const panelW = 2 * btnW + gap + 36;
     const panelH = 2 * btnH + gap + 36;
     const panelX = W / 2 - panelW / 2;
@@ -335,7 +300,7 @@ export class BattleScene extends Phaser.Scene {
       btn.setSize(btnW, btnH).setInteractive({ cursor: 'pointer' });
       btn.on('pointerover', () => drawBtnBg(true));
       btn.on('pointerout', () => drawBtnBg(false));
-      btn.on('pointerdown', () => { this.selectChoice(i); });
+      btn.on('pointerdown', () => this.selectChoice(i));
 
       (btn as any).__choiceVal = val;
       this.choiceContainer!.add(btn);
@@ -344,7 +309,6 @@ export class BattleScene extends Phaser.Scene {
 
   private selectChoice(index: number) {
     if (this.locked || !this.choiceContainer) return;
-    // Skip non-button children (e.g. the panel bg Graphics)
     const btns = (this.choiceContainer.list as any[]).filter(b => '__choiceVal' in b);
     const btn = btns[index];
     if (!btn) return;
@@ -352,10 +316,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private destroyChoiceButtons() {
-    if (this.choiceContainer) {
-      this.choiceContainer.destroy(true);
-      this.choiceContainer = undefined;
-    }
+    this.choiceContainer?.destroy(true);
+    this.choiceContainer = undefined;
   }
 
   private startTimer() {
@@ -377,23 +339,33 @@ export class BattleScene extends Phaser.Scene {
 
   private updateTimerBar() {
     const W = this.scale.width; const H = this.scale.height;
-    const panelY = H - 160;
+    const panelY = H - 195;
     const barW = 180;
     const ratio = this.timeLeft / this.data2.timeLimit;
     const color = ratio > 0.5 ? 0x27ae60 : ratio > 0.25 ? 0xf39c12 : 0xc0392b;
     this.timerBar.clear();
     this.timerBar.fillStyle(0x2c1b50, 1);
-    this.timerBar.fillRoundedRect(W / 2 - barW / 2, panelY + 22, barW, 10, 5);
+    this.timerBar.fillRoundedRect(W / 2 - barW / 2, panelY + 48, barW, 10, 5);
     this.timerBar.fillStyle(color, 1);
-    this.timerBar.fillRoundedRect(W / 2 - barW / 2, panelY + 22, barW * ratio, 10, 5);
+    this.timerBar.fillRoundedRect(W / 2 - barW / 2, panelY + 48, barW * ratio, 10, 5);
     this.timerText.setText(`${this.timeLeft}s`);
+  }
+
+  private updateComboDisplay() {
+    if (this.combo >= 2) {
+      this.comboDisplay.setText(`Combo x${this.combo}!`);
+      this.comboDisplay.setColor(this.combo >= 5 ? '#ff6600' : this.combo >= 3 ? '#ffcc00' : '#ffffff');
+    } else {
+      this.comboDisplay.setText('');
+    }
   }
 
   private onTimeout() {
     if (this.locked) return;
     this.locked = true;
     this.timerEvent?.remove();
-    this.correctStreak = 0;
+    this.combo = 0;
+    this.updateComboDisplay();
     this.totalWrong++;
     this.roundsDone++;
     playWrong();
@@ -416,13 +388,15 @@ export class BattleScene extends Phaser.Scene {
 
     if (correct) {
       this.totalCorrect++;
-      this.correctStreak++;
+      this.combo++;
+      this.updateComboDisplay();
       playCorrect();
       this.showFeedback(true);
       this.knightAttacks();
-      const dmg = this.correctStreak >= 3 ? 15 : 10;
+      // Damage scales with combo: 10 base + 2 per combo level, max 25
+      const dmg = Math.min(25, 10 + Math.max(0, this.combo - 1) * 2);
       this.enemyHp = Math.max(0, this.enemyHp - dmg);
-      if (this.correctStreak >= 3) { this.showCombo(); playCombo(); }
+      if (this.combo >= 3) { this.showComboPopup(); playCombo(); }
       this.time.delayedCall(1600, () => {
         this.redrawEnemyHp();
         if (this.enemyHp <= 0) { this.endBattle(); return; }
@@ -430,7 +404,8 @@ export class BattleScene extends Phaser.Scene {
       });
     } else {
       this.totalWrong++;
-      this.correctStreak = 0;
+      this.combo = 0;
+      this.updateComboDisplay();
       playWrong();
       this.showFeedback(false, this.currentAnswer);
       this.enemyAttacks();
@@ -445,7 +420,7 @@ export class BattleScene extends Phaser.Scene {
 
   private showFeedback(correct: boolean, showAnswer?: number) {
     const W = this.scale.width; const H = this.scale.height;
-    const msg = correct ? '✓  Goed gedaan!' : `✗  Fout!   Antwoord: ${showAnswer}`;
+    const msg = correct ? 'Goed gedaan!' : `Fout!  Antwoord: ${showAnswer}`;
     const bgFill = correct ? 0x0d3b1e : 0x3b0d0d;
     const borderColor = correct ? 0x27ae60 : 0xe74c3c;
     const textColor = correct ? '#2ecc71' : '#ff6666';
@@ -470,13 +445,14 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private showCombo() {
+  private showComboPopup() {
     const W = this.scale.width;
-    const labels = ['', '', '', '🔥 x3 COMBO!', '⚡ x4 COMBO!', '💥 x5 COMBO!'];
-    const label = labels[Math.min(this.correctStreak, labels.length - 1)] || `🌟 x${this.correctStreak} COMBO!`;
+    const c = this.combo;
+    const label = c >= 7 ? `x${c} COMBO!!!` : c >= 5 ? `x${c} COMBO!!` : `x${c} COMBO!`;
+    const color = c >= 5 ? '#ff6600' : '#ffcc00';
     const ct = this.add.text(W / 2, this.scale.height * 0.3, label, {
-      fontFamily: 'Cinzel, serif', fontSize: '36px', color: '#ffcc00', fontStyle: 'bold',
-      stroke: '#7a4400', strokeThickness: 5,
+      fontFamily: 'Cinzel, serif', fontSize: '36px', color, fontStyle: 'bold',
+      stroke: '#7a4400', strokeThickness: 4,
     }).setOrigin(0.5).setAlpha(0).setDepth(100);
     this.tweens.add({
       targets: ct, alpha: 1, y: this.scale.height * 0.25, duration: 300, ease: 'Back.out',
@@ -491,14 +467,12 @@ export class BattleScene extends Phaser.Scene {
     const ky = this.knightBaseY;
     const cs = this.charScale;
 
-    // 1. Windup: lean back
     this.tweens.add({
       targets: this.knight.container,
       x: kx - 20, angle: -8,
       duration: 90, ease: 'Power2.in',
       onComplete: () => {
         playAttack();
-        // 2. Lunge forward
         this.tweens.add({
           targets: this.knight.container,
           x: kx + 160, angle: 14,
@@ -508,14 +482,11 @@ export class BattleScene extends Phaser.Scene {
             this.spawnSwordSlash(kx + 160, ky - 30);
             this.spawnSpellEffect(kx + 160, ky, this.enemyBaseX, this.enemyBaseY);
             this.cameras.main.shake(90, 0.006);
-            // 3. Bounce back
             this.tweens.add({
               targets: this.knight.container,
-              x: kx + 30, angle: 0,
-              scaleX: cs, scaleY: cs,
+              x: kx + 30, angle: 0, scaleX: cs, scaleY: cs,
               duration: 110, ease: 'Power2.out',
               onComplete: () => {
-                // 4. Return
                 this.tweens.add({
                   targets: this.knight.container,
                   x: kx, duration: 300, ease: 'Power1.out',
@@ -549,7 +520,6 @@ export class BattleScene extends Phaser.Scene {
 
   private spawnSwordSlash(x: number, y: number) {
     const g = this.add.graphics().setDepth(20);
-    // Multiple diagonal lines making a slash arc
     for (let i = -2; i <= 2; i++) {
       const alpha = 1 - Math.abs(i) * 0.18;
       g.lineStyle(4 - Math.abs(i), 0xffffff, alpha);
@@ -628,13 +598,13 @@ export class BattleScene extends Phaser.Scene {
   private redrawKnightHp() {
     const W = this.scale.width; const H = this.scale.height;
     const hpBarW = Math.min(220, Math.max(80, W / 2 - 230));
-    this.drawHpBar(this.knightHpBar, 20, H - 160 + 26, hpBarW, this.knightHp, 0x27ae60);
+    this.drawHpBar(this.knightHpBar, 20, H - 195 + 26, hpBarW, this.knightHp, 0x27ae60);
   }
 
   private redrawEnemyHp() {
     const W = this.scale.width; const H = this.scale.height;
     const hpBarW = Math.min(220, Math.max(80, W / 2 - 230));
-    this.drawHpBar(this.enemyHpBar, W - hpBarW - 20, H - 160 + 26, hpBarW, this.enemyHp, 0xc0392b);
+    this.drawHpBar(this.enemyHpBar, W - hpBarW - 20, H - 195 + 26, hpBarW, this.enemyHp, 0xc0392b);
   }
 
   private endBattle() {
@@ -642,6 +612,7 @@ export class BattleScene extends Phaser.Scene {
     this.locked = true;
     const total = this.totalCorrect + this.totalWrong;
     const perfect = total > 0 && this.totalCorrect === total;
+    const accuracy = total > 0 ? Math.round((this.totalCorrect / total) * 100) : 0;
     recordResult(this.data2.table, perfect);
 
     const won = this.enemyHp <= 0 || (this.knightHp > 0 && this.roundsDone >= this.TOTAL_ROUNDS && this.totalCorrect > this.totalWrong);
@@ -652,7 +623,7 @@ export class BattleScene extends Phaser.Scene {
       this.scene.start('ResultScene', {
         won, table: this.data2.table, difficulty: this.data2.difficulty,
         totalCorrect: this.totalCorrect, totalWrong: this.totalWrong,
-        knightHp: this.knightHp, enemyHp: this.enemyHp,
+        knightHp: this.knightHp, enemyHp: this.enemyHp, accuracy,
       });
     });
   }

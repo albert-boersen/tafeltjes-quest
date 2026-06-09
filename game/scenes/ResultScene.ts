@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { drawCastleBackground } from '../gfx/castle';
+import { saveHighscore } from '../state/highscore';
+import { tryUnlockNext } from '../state/progress';
 
 interface ResultData {
   won: boolean;
@@ -9,6 +11,7 @@ interface ResultData {
   totalWrong: number;
   knightHp: number;
   enemyHp: number;
+  accuracy: number;
 }
 
 export class ResultScene extends Phaser.Scene {
@@ -25,6 +28,9 @@ export class ResultScene extends Phaser.Scene {
 
     if (data.won) {
       this.showVictory(data, W, H);
+      saveHighscore(data.table, data.accuracy, data.difficulty);
+      const newWorld = tryUnlockNext(data.table);
+      if (newWorld) this.showUnlockAnnouncement(newWorld, W, H);
     } else {
       this.showDefeat(data, W, H);
     }
@@ -65,17 +71,17 @@ export class ResultScene extends Phaser.Scene {
     this.tweens.add({ targets: [title, shadowTitle], alpha: 1, scaleX: 1, scaleY: 1, duration: 600, ease: 'Back.out' });
     this.tweens.add({ targets: title, scaleX: 1.04, scaleY: 1.04, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.inOut', delay: 700 });
 
-    this.add.text(W / 2, H * 0.18 + 62, '⚔ De vijand is verslagen! ⚔', {
+    this.add.text(W / 2, H * 0.18 + 62, 'De vijand is verslagen!', {
       fontFamily: 'Cinzel, serif', fontSize: '22px', color: '#d4b8ff',
     }).setOrigin(0.5).setAlpha(0);
 
     const medals: Record<string, string> = {
-      schildknaap: '🛡 Schildknaap op de Oefening',
-      leerling: '🥉 Leerling Ridder',
-      ridder: '🥈 Ridder van het Koninkrijk',
-      meester: '🥇 Meester Tovenaar',
+      schildknaap: 'Schildknaap op de Oefening',
+      leerling: 'Leerling Ridder',
+      ridder: 'Ridder van het Koninkrijk',
+      meester: 'Meester Tovenaar',
     };
-    const rank = this.add.text(W / 2, H * 0.18 + 95, medals[data.difficulty] || '⭐ Ridder', {
+    const rank = this.add.text(W / 2, H * 0.18 + 95, medals[data.difficulty] || 'Ridder', {
       fontFamily: 'Cinzel, serif', fontSize: '20px', color: '#f5c842',
     }).setOrigin(0.5).setAlpha(0);
 
@@ -116,6 +122,31 @@ export class ResultScene extends Phaser.Scene {
     }).setOrigin(0.5);
   }
 
+  private showUnlockAnnouncement(worldId: string, W: number, H: number) {
+    const worldNames: Record<string, string> = {
+      forest: 'Woud', volcano: 'Vulkaan', ice: 'IJsberg', ocean: 'Oceaan',
+    };
+    const name = worldNames[worldId] ?? worldId;
+
+    const popup = this.add.container(W / 2, H * 0.72).setDepth(50).setAlpha(0);
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0a2a0a, 0.96);
+    bg.fillRoundedRect(-260, -40, 520, 80, 20);
+    bg.lineStyle(3, 0x22cc44, 1);
+    bg.strokeRoundedRect(-260, -40, 520, 80, 20);
+    const label = this.add.text(0, -8, 'Nieuw wereld vrijgespeeld!', {
+      fontFamily: 'Cinzel, serif', fontSize: '20px', color: '#22cc44', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    const sub = this.add.text(0, 18, name, {
+      fontFamily: "'Cinzel Decorative', serif", fontSize: '18px', color: '#f5c842',
+    }).setOrigin(0.5);
+    popup.add([bg, label, sub]);
+
+    this.tweens.add({
+      targets: popup, alpha: 1, y: H * 0.70, duration: 500, ease: 'Back.out', delay: 1200,
+    });
+  }
+
   private showStats(data: ResultData, W: number, H: number) {
     const panelX = W / 2 - 200;
     const panelY = H * 0.46;
@@ -128,14 +159,13 @@ export class ResultScene extends Phaser.Scene {
     panel.lineStyle(2, 0x4a2890, 1);
     panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 14);
 
-    const total = data.totalCorrect + data.totalWrong;
-    const pct = total > 0 ? Math.round((data.totalCorrect / total) * 100) : 0;
-    const accuracy = pct >= 90 ? '⭐⭐⭐' : pct >= 70 ? '⭐⭐' : pct >= 50 ? '⭐' : '';
+    const pct = data.accuracy;
+    const starStr = pct >= 90 ? '★★★' : pct >= 70 ? '★★' : pct >= 50 ? '★' : '-';
 
-    const stats = [
+    const stats: [string, string][] = [
       [`Tafel van ${data.table}`, `Moeilijkheid: ${data.difficulty}`],
-      [`✓ Goed: ${data.totalCorrect}`, `✗ Fout: ${data.totalWrong}`],
-      [`Nauwkeurigheid: ${pct}%  ${accuracy}`, ''],
+      [`Goed: ${data.totalCorrect}`, `Fout: ${data.totalWrong}`],
+      [`Nauwkeurigheid: ${pct}%  ${starStr}`, ''],
     ];
 
     stats.forEach(([left, right], i) => {

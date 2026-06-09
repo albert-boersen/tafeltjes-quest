@@ -12,6 +12,7 @@ export default function GameCanvas() {
     (async () => {
       const Phaser = (await import('phaser')).default;
       const { MenuScene } = await import('@/game/scenes/MenuScene');
+      const { CharacterScene } = await import('@/game/scenes/CharacterScene');
       const { BattleScene } = await import('@/game/scenes/BattleScene');
       const { ResultScene } = await import('@/game/scenes/ResultScene');
 
@@ -24,7 +25,7 @@ export default function GameCanvas() {
         antialias: true,
         roundPixels: true,
         parent: 'game-container',
-        scene: [MenuScene, BattleScene, ResultScene],
+        scene: [MenuScene, CharacterScene, BattleScene, ResultScene],
         scale: {
           mode: Phaser.Scale.RESIZE,
           autoCenter: Phaser.Scale.CENTER_BOTH,

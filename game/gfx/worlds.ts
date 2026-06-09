@@ -29,6 +29,14 @@ export interface WorldDef {
   roarFn: string;      // which sound to play on enemy attack
 }
 
+export function worldForTable(table: number): WorldDef {
+  if (table <= 2) return WORLDS[0]; // kasteel / draak
+  if (table <= 4) return WORLDS[1]; // woud / trol
+  if (table <= 6) return WORLDS[2]; // vulkaan / vuurgeest
+  if (table <= 8) return WORLDS[3]; // ijsberg / ijsridder
+  return WORLDS[4];                 // oceaan / zeemonster
+}
+
 export const WORLDS: WorldDef[] = [
   {
     id: 'castle',

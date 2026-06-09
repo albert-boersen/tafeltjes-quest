@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background -->
+  <rect width="64" height="64" rx="10" fill="#1a0a2e"/>
+  <!-- Shield body -->
+  <path d="M32 5 L55 14 V34 C55 49 44 57 32 62 C20 57 9 49 9 34 V14 Z"
+        fill="#2d1b69" stroke="#f5c842" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Shield inner border line -->
+  <path d="M32 9 L51 17 V34 C51 47 42 54 32 58 C22 54 13 47 13 34 V17 Z"
+        fill="none" stroke="#f5c842" stroke-width="0.8" opacity="0.45"/>
+  <!-- Sword blade -->
+  <polygon points="29.5,12 34.5,12 35,28 32,29.5 29,28" fill="#f5c842"/>
+  <!-- Crossguard -->
+  <rect x="18" y="28" width="28" height="5" rx="2.5" fill="#f5c842"/>
+  <!-- Grip -->
+  <rect x="30" y="33" width="4" height="9" rx="2" fill="#9a7800"/>
+  <!-- Pommel -->
+  <ellipse cx="32" cy="44.5" rx="5" ry="4" fill="#f5c842"/>
+</svg>
